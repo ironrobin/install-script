@@ -97,6 +97,53 @@ _find_keyring() {
   rm keys
 } # End of function _find_keyring
 
+_filter_packages() {
+  # Function to filter out non-existent packages
+  # Parameters:
+  #   $1: Input file containing list of packages
+  #   $2: Output file for valid packages
+  # Returns:
+  #   0: If valid packages were found
+  #   1: If no valid packages were found
+  
+  local input_file="$1"
+  local output_file="$2"
+  local has_valid_packages=0
+  
+  # Create a new file for valid packages
+  true > "$output_file"
+  
+  # Check each package and filter out non-existent ones
+  printf "\n${CYAN}Checking package availability...${NC}\n"
+  while read package; do
+    # Skip empty lines and comments
+    if [[ -z "$package" || "$package" =~ ^# ]]; then
+      continue
+    fi
+    
+    # Check if package exists using pacman -Si which is more accurate than pacman -Ss
+    if pacman -Si "$package" > /dev/null 2>&1; then
+      # Package exists, add to valid packages file
+      echo "$package" >> "$output_file"
+      has_valid_packages=1
+    else
+      # Package doesn't exist, print in RED and log it
+      printf "${RED}Package not found: $package${NC}\n"
+      printf "Package not found: $package\n" >> /root/enosARM.log
+    fi
+  done < "$input_file"
+  
+  # Clean up temporary file
+  rm -f "$input_file"
+  
+  # Return status based on whether valid packages were found
+  if [ $has_valid_packages -eq 1 ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
 _base_addons() {
   ### the following installs all packages needed to match the EndeavourOS base install
   printf "\n${CYAN}Installing EndeavourOS Base Addons...${NC}\n"
@@ -108,37 +155,13 @@ _base_addons() {
     cat eos-packagelist/eos-apps >> base-addons-all
     cat eos-packagelist/recom-apps >> base-addons-all
     
-    # Create a new file for valid packages
-    true > base-addons
-    
-    # Check each package and filter out non-existent ones
-    printf "\n${CYAN}Checking package availability...${NC}\n"
-    while read package; do
-      # Skip empty lines and comments
-      if [[ -z "$package" || "$package" =~ ^# ]]; then
-        continue
-      fi
-      
-      # Check if package exists using pacman -Si which is more accurate than pacman -Ss
-      if pacman -Si "$package" > /dev/null 2>&1; then
-        # Package exists, add to valid packages file
-        echo "$package" >> base-addons
-      else
-        # Package doesn't exist, print in RED and log it
-        printf "${RED}Package not found: $package${NC}\n"
-        printf "Package not found: $package\n" >> /root/enosARM.log
-      fi
-    done < base-addons-all
-    
-    # Install only valid packages
-    if [ -s base-addons ]; then
+    # Filter packages and get only valid ones
+    if _filter_packages "base-addons-all" "base-addons"; then
+      # Install valid packages
       pacman -S --noconfirm --needed - <base-addons
     else
       printf "${RED}No valid packages found to install${NC}\n"
     fi
-    
-    # Clean up temporary file
-    rm -f base-addons-all
     
     #       systemctl disable dhcpcd.service
     #       systemctl enable NetworkManager.service
@@ -661,9 +684,20 @@ _xfce4() {
   printf "\n${CYAN}Installing XFCE4 ...${NC}\n"
   MESSAGE="\nInstalling XFCE4  "
 #  eos-packagelist --arch arm "XFCE4-Desktop" >xfce4
-  cat eos-packagelist/xfce4 > xfce4
-  pacman -S --noconfirm --needed - <xfce4
-  _ok_nok # function call
+  cat eos-packagelist/xfce4 > xfce4-all
+  
+  # Filter packages and get only valid ones
+  if _filter_packages "xfce4-all" "xfce4"; then
+    # Install valid packages
+    pacman -S --noconfirm --needed - <xfce4
+    _ok_nok # function call
+  else
+    printf "${RED}No valid XFCE4 packages found to install${NC}\n"
+    MESSAGE="\nNo valid XFCE4 packages found to install"
+    _ok_nok # function call with error
+    return 1
+  fi
+  
   systemctl enable lightdm.service
 } # end of function _xfce4
 
@@ -671,9 +705,20 @@ _mate() {
   printf "\n${CYAN}Installing Mate...${NC}\n"
   MESSAGE="\nInstalling Mate  "
 #  eos-packagelist --arch arm "MATE-Desktop" >mate
-  cat eos-packagelist/mate > mate
-  pacman -S --noconfirm --needed - <mate
-  _ok_nok # function call
+  cat eos-packagelist/mate > mate-all
+  
+  # Filter packages and get only valid ones
+  if _filter_packages "mate-all" "mate"; then
+    # Install valid packages
+    pacman -S --noconfirm --needed - <mate
+    _ok_nok # function call
+  else
+    printf "${RED}No valid Mate packages found to install${NC}\n"
+    MESSAGE="\nNo valid Mate packages found to install"
+    _ok_nok # function call with error
+    return 1
+  fi
+  
   systemctl enable lightdm.service
 } # end of function _mate
 
@@ -681,9 +726,20 @@ _kde() {
   printf "\n${CYAN}Installing KDE Plasma...${NC}\n"
   MESSAGE="\nInstalling KDE Plasma  "
 #  eos-packagelist --arch arm "KDE-Desktop" >plasma
-  cat eos-packagelist/kde > plasma
-  pacman -S --noconfirm --needed - <plasma
-  _ok_nok # function call
+  cat eos-packagelist/kde > plasma-all
+  
+  # Filter packages and get only valid ones
+  if _filter_packages "plasma-all" "plasma"; then
+    # Install valid packages
+    pacman -S --noconfirm --needed - <plasma
+    _ok_nok # function call
+  else
+    printf "${RED}No valid KDE Plasma packages found to install${NC}\n"
+    MESSAGE="\nNo valid KDE Plasma packages found to install"
+    _ok_nok # function call with error
+    return 1
+  fi
+  
   systemctl enable sddm.service
 } # end of function _kde
 
@@ -691,9 +747,20 @@ _gnome() {
   printf "\n${CYAN}Installing Gnome...${NC}\n"
   MESSAGE="\nInstalling Gnome  "
 #  eos-packagelist --arch arm "GNOME-Desktop" >gnome
-  cat eos-packagelist/gnome > gnome
-  pacman -S --noconfirm --needed - <gnome
-  _ok_nok # function call
+  cat eos-packagelist/gnome > gnome-all
+  
+  # Filter packages and get only valid ones
+  if _filter_packages "gnome-all" "gnome"; then
+    # Install valid packages
+    pacman -S --noconfirm --needed - <gnome
+    _ok_nok # function call
+  else
+    printf "${RED}No valid Gnome packages found to install${NC}\n"
+    MESSAGE="\nNo valid Gnome packages found to install"
+    _ok_nok # function call with error
+    return 1
+  fi
+  
   systemctl enable gdm.service
 } # end of function _gnome
 
@@ -701,9 +768,20 @@ _cinnamon() {
   printf "\n${CYAN}Installing Cinnamon...${NC}\n"
   MESSAGE="\nInstalling Cinnamon  "
 #  eos-packagelist --arch arm "Cinnamon-Desktop" >cinnamon
-  cat eos-packagelist cinnamon > cinnamon
-  pacman -S --noconfirm --needed - <cinnamon
-  _ok_nok # function call
+  cat eos-packagelist/cinnamon > cinnamon-all
+  
+  # Filter packages and get only valid ones
+  if _filter_packages "cinnamon-all" "cinnamon"; then
+    # Install valid packages
+    pacman -S --noconfirm --needed - <cinnamon
+    _ok_nok # function call
+  else
+    printf "${RED}No valid Cinnamon packages found to install${NC}\n"
+    MESSAGE="\nNo valid Cinnamon packages found to install"
+    _ok_nok # function call with error
+    return 1
+  fi
+  
   systemctl enable lightdm.service
 } # end of function _cinnamon
 
@@ -711,9 +789,20 @@ _budgie() {
   printf "\n${CYAN}Installing Budgie-Desktop...${NC}\n"
   MESSAGE="\nInstalling Budgie-Desktop"
 #  eos-packagelist --arch arm "Budgie-Desktop" >budgie
-  cat eos-packagelist budgie > budgie
-  pacman -S --noconfirm --needed - <budgie
-  _ok_nok # function call
+  cat eos-packagelist/budgie > budgie-all
+  
+  # Filter packages and get only valid ones
+  if _filter_packages "budgie-all" "budgie"; then
+    # Install valid packages
+    pacman -S --noconfirm --needed - <budgie
+    _ok_nok # function call
+  else
+    printf "${RED}No valid Budgie packages found to install${NC}\n"
+    MESSAGE="\nNo valid Budgie packages found to install"
+    _ok_nok # function call with error
+    return 1
+  fi
+  
   systemctl enable lightdm.service
 } # end of function _budgie
 
@@ -721,9 +810,20 @@ _lxde() {
   printf "\n${CYAN}Installing LXDE...${NC}\n"
   MESSAGE="\nInstalling LXDE  "
 #  eos-packagelist --arch arm "LXDE-Desktop" >lxde
-  cat eos-packagelist lxde > lxde
-  pacman -S --noconfirm --needed - <lxde
-  _ok_nok # function call
+  cat eos-packagelist/lxde > lxde-all
+  
+  # Filter packages and get only valid ones
+  if _filter_packages "lxde-all" "lxde"; then
+    # Install valid packages
+    pacman -S --noconfirm --needed - <lxde
+    _ok_nok # function call
+  else
+    printf "${RED}No valid LXDE packages found to install${NC}\n"
+    MESSAGE="\nNo valid LXDE packages found to install"
+    _ok_nok # function call with error
+    return 1
+  fi
+  
   # systemctl enable lightdm.service
   systemctl enable eos-lxdm-gtk3.service
 } # end of function _lxde
@@ -732,9 +832,20 @@ _lxqt() {
   printf "\n${CYAN}Installing LXQT...${NC}\n"
   MESSAGE="\nInstalling LXQT  "
 #  eos-packagelist --arch arm "LXQT-Desktop" >lxqt
-  cat eos-packagelist lxqt > lxqt
-  pacman -S --noconfirm --needed - <lxqt
-  _ok_nok # function call
+  cat eos-packagelist/lxqt > lxqt-all
+  
+  # Filter packages and get only valid ones
+  if _filter_packages "lxqt-all" "lxqt"; then
+    # Install valid packages
+    pacman -S --noconfirm --needed - <lxqt
+    _ok_nok # function call
+  else
+    printf "${RED}No valid LXQT packages found to install${NC}\n"
+    MESSAGE="\nNo valid LXQT packages found to install"
+    _ok_nok # function call with error
+    return 1
+  fi
+  
   systemctl enable sddm.service
 } # end of function _lxqt
 
@@ -742,9 +853,20 @@ _i3wm() {
   printf "\n${CYAN}Installing i3-wm ...${NC}\n"
   MESSAGE="\nInstalling i3-wm  "
 #  eos-packagelist --arch arm "i3-Window-Manager" >i3
-  cat eos-packagelist i3 > i3
-  pacman -S --noconfirm --needed - <i3
-  _ok_nok # function call
+  cat eos-packagelist/i3 > i3-all
+  
+  # Filter packages and get only valid ones
+  if _filter_packages "i3-all" "i3"; then
+    # Install valid packages
+    pacman -S --noconfirm --needed - <i3
+    _ok_nok # function call
+  else
+    printf "${RED}No valid i3-wm packages found to install${NC}\n"
+    MESSAGE="\nNo valid i3-wm packages found to install"
+    _ok_nok # function call with error
+    return 1
+  fi
+  
   systemctl enable lightdm.service
 } # end of function _i3wm
 
