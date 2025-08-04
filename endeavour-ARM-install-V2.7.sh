@@ -104,10 +104,42 @@ _base_addons() {
   sleep 2
   if [ "$INSTALLTYPE" == "desktop" ]; then
     #eos-packagelist --arch arm "Desktop-Base + Common packages" "Firefox and language package" >base-addons
-    cat eos-packagelist/eos-base-group > base-addons
-    cat eos-packagelist/eos-apps >> base-addons
-    cat eos-packagelist/recom-apps >> base-addons
-    pacman -S --noconfirm --needed - <base-addons
+    cat eos-packagelist/eos-base-group > base-addons-all
+    cat eos-packagelist/eos-apps >> base-addons-all
+    cat eos-packagelist/recom-apps >> base-addons-all
+    
+    # Create a new file for valid packages
+    true > base-addons
+    
+    # Check each package and filter out non-existent ones
+    printf "\n${CYAN}Checking package availability...${NC}\n"
+    while read package; do
+      # Skip empty lines and comments
+      if [[ -z "$package" || "$package" =~ ^# ]]; then
+        continue
+      fi
+      
+      # Check if package exists using pacman -Si which is more accurate than pacman -Ss
+      if pacman -Si "$package" > /dev/null 2>&1; then
+        # Package exists, add to valid packages file
+        echo "$package" >> base-addons
+      else
+        # Package doesn't exist, print in RED and log it
+        printf "${RED}Package not found: $package${NC}\n"
+        printf "Package not found: $package\n" >> /root/enosARM.log
+      fi
+    done < base-addons-all
+    
+    # Install only valid packages
+    if [ -s base-addons ]; then
+      pacman -S --noconfirm --needed - <base-addons
+    else
+      printf "${RED}No valid packages found to install${NC}\n"
+    fi
+    
+    # Clean up temporary file
+    rm -f base-addons-all
+    
     #       systemctl disable dhcpcd.service
     #       systemctl enable NetworkManager.service
     #       systemctl start NetworkManager.service
