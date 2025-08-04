@@ -104,7 +104,9 @@ _base_addons() {
   sleep 2
   if [ "$INSTALLTYPE" == "desktop" ]; then
     #eos-packagelist --arch arm "Desktop-Base + Common packages" "Firefox and language package" >base-addons
-    cat eos-packgelist/eos-base-group > base-addons
+    cat eos-packagelist/eos-base-group > base-addons
+    cat eos-packagelist/eos-apps >> base-addons
+    cat eos-packagelist/recom-apps >> base-addons
     pacman -S --noconfirm --needed - <base-addons
     #       systemctl disable dhcpcd.service
     #       systemctl enable NetworkManager.service
